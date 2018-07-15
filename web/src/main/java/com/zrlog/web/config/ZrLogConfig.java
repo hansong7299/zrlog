@@ -1,6 +1,7 @@
 package com.zrlog.web.config;
 
 import com.hibegin.common.util.FileUtils;
+import com.hibegin.common.util.IOUtil;
 import com.hibegin.common.util.StringUtils;
 import com.jfinal.config.*;
 import com.jfinal.core.JFinal;
@@ -64,6 +65,10 @@ public class ZrLogConfig extends JFinalConfig {
         return PathKit.getWebRootPath() + "/WEB-INF/update-sql";
     }
 
+    private String getDbProperties() {
+        return PathKit.getWebRootPath() + "/WEB-INF/db.properties";
+    }
+
     /**
      * 读取Zrlog的一些配置，主要是避免硬编码的问题
      */
@@ -91,7 +96,7 @@ public class ZrLogConfig extends JFinalConfig {
      * 通过检查WEB-INF目录下面是否有 install.lock 文件来判断是否已经安装过了，这里为静态工具方法，方便其他类调用。
      */
     public static boolean isInstalled() {
-        return new InstallService(PathKit.getWebRootPath() + "/WEB-INF").checkInstall();
+        return new InstallService(PathKit.getWebRootPath() + "/WEB-INF").checkInstall() || StringUtils.isNotEmpty(ZrLogUtil.getDbInfoByEnv());
     }
 
     /**
@@ -182,10 +187,12 @@ public class ZrLogConfig extends JFinalConfig {
     public void configPlugin(Plugins plugins) {
         // 如果没有安装的情况下不初始化数据
         if (isInstalled()) {
-            String dbPropertiesFile = PathKit.getWebRootPath() + "/WEB-INF/db.properties";
-            try (FileInputStream in = new FileInputStream(dbPropertiesFile)) {
+            if (StringUtils.isNotEmpty(ZrLogUtil.getDbInfoByEnv())) {
+                IOUtil.writeBytesToFile(ZrLogUtil.getDbInfoByEnv().getBytes(), new File(getDbProperties()));
+            }
+            try (FileInputStream in = new FileInputStream(getDbProperties())) {
                 dbProperties.load(in);
-                tryUpgradeDbPropertiesFile(dbPropertiesFile, dbProperties);
+                tryUpgradeDbPropertiesFile(getDbProperties(), dbProperties);
                 tryDoUpgrade(getUpgradeSqlBasePath(), dbProperties.getProperty("jdbcUrl"), dbProperties.getProperty("user"),
                         dbProperties.getProperty("password"), dbProperties.getProperty("driverClass"));
                 jdbcUrl = dbProperties.getProperty("jdbcUrl");
@@ -201,7 +208,7 @@ public class ZrLogConfig extends JFinalConfig {
                     pluginJvmArgsObj = "";
                 }
                 if (!isTest()) {
-                    runBlogPlugin(dbPropertiesFile, pluginJvmArgsObj.toString());
+                    runBlogPlugin(getDbProperties(), pluginJvmArgsObj.toString());
                     plugins.add(new UpdateVersionPlugin());
                     plugins.add(new CacheCleanerPlugin());
                 }
